@@ -1,0 +1,26 @@
+tvuj_projekt/
+├── main.py                         ← hlavní Python skript (tvůj tréninkový + třídicí)
+│
+├── classifier_data/                ← složka s trénovacími daty
+│   └── train/
+│       ├── ok/                     ← zdravé (bez chyby) trénovací obrázky
+│       │   ├── img1.jpg
+│       │   ├── img2.jpg
+│       │   └── ...
+│       └── anomaly/                ← vadné (s chybou) trénovací obrázky
+│           ├── img3.jpg
+│           ├── img4.jpg
+│           └── ...
+│
+├── to_sort/                        ← sem dáš nové obrázky, které chceš automaticky roztřídit
+│   ├── novy1.jpg
+│   ├── novy2.jpg
+│   └── ...
+│
+├── sorted/                         ← výstupní složka s roztříděnými obrázky (vytvoří se automaticky)
+│   ├── ok/
+│   │   ├── novy1.jpg               ← obrázky, které model vyhodnotil jako OK
+│   └── anomaly/
+│       ├── novy2.jpg               ← obrázky, které model vyhodnotil jako s chybou
+│
+└── model.pth                       ← uložený natrénovaný model (vytvoří se automaticky)

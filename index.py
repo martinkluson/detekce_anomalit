@@ -1,0 +1,111 @@
+import os
+import shutil
+import torch
+import torchvision.transforms as transforms
+from torchvision.datasets import ImageFolder
+from torch.utils.data import DataLoader, random_split
+import torch.nn as nn
+import torch.optim as optim
+from torchvision.models import resnet18, ResNet18_Weights
+from PIL import Image
+
+# ==== Cesty ====
+DATA_DIR = "classifier_data/train"
+MODEL_PATH = "model.pth"
+TO_SORT_DIR = "to_sort"
+OUTPUT_OK = "sorted/ok"
+OUTPUT_ANOMALY = "sorted/anomaly"
+
+# Vytvoření výstupních složek
+os.makedirs(OUTPUT_OK, exist_ok=True)
+os.makedirs(OUTPUT_ANOMALY, exist_ok=True)
+
+# ==== Transformace ====
+transform = transforms.Compose([
+    transforms.Resize((256, 256)),
+    transforms.ToTensor(),
+])
+
+# ==== Dataset a dataloadery ====
+dataset = ImageFolder(root=DATA_DIR, transform=transform)
+train_size = int(0.8 * len(dataset))
+val_size = len(dataset) - train_size
+train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+
+train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=16)
+
+# ==== Model ====
+model = resnet18(weights=ResNet18_Weights.DEFAULT)
+model.fc = nn.Linear(model.fc.in_features, 2)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = model.to(device)
+
+# ==== Trénovací nastavení ====
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# ==== Trénink ====
+EPOCHS = 5
+print(" Trénink modelu...")
+for epoch in range(EPOCHS):
+    model.train()
+    total_loss = 0
+    for images, labels in train_loader:
+        images, labels = images.to(device), labels.to(device)
+        optimizer.zero_grad()
+        outputs = model(images)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+    print(f" Kolo učení {epoch+1}/{EPOCHS} dokončeno | Treninkova chyba: {total_loss:.4f}")
+
+# ==== Vyhodnocení ====
+model.eval()
+correct = 0
+total = 0
+with torch.no_grad():
+    for images, labels in val_loader:
+        images, labels = images.to(device), labels.to(device)
+        outputs = model(images)
+        _, predicted = torch.max(outputs, 1)
+        total += labels.size(0)
+        correct += (predicted == labels).sum().item()
+
+print(f"\n Validační přesnost: {100 * correct / total:.2f}%")
+
+# ==== Uložení ====
+torch.save(model.state_dict(), MODEL_PATH)
+print(f"\n Model uložen do: {MODEL_PATH}")
+
+# ==== Roztřídění nových obrázků ====
+print("\n🔍 Roztřídění obrázků ze složky to_sort...")
+class_names = dataset.classes  # ['anomaly', 'ok'] nebo ['ok', 'anomaly']
+
+model.eval()
+for filename in os.listdir(TO_SORT_DIR):
+    if filename.lower().endswith((".jpg", ".png", ".jpeg")):
+        filepath = os.path.join(TO_SORT_DIR, filename)
+        try:
+            image = Image.open(filepath).convert("RGB")
+        except Exception as e:
+            print(f" Nelze načíst {filename}: {e}")
+            continue
+
+        input_tensor = transform(image).unsqueeze(0).to(device)
+        with torch.no_grad():
+            output = model(input_tensor)
+            _, predicted = torch.max(output.data, 1)
+
+        predicted_class = class_names[predicted.item()] if predicted.item() < len(class_names) else "unknown"
+
+        if predicted_class == "ok":
+            dest = os.path.join(OUTPUT_OK, filename)
+        else:
+            dest = os.path.join(OUTPUT_ANOMALY, filename)
+
+        shutil.copy(filepath, dest)
+        print(f"{filename} → {predicted_class}")
+
+print("\n Třídění dokončeno.")
